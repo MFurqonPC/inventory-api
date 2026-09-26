@@ -19,7 +19,7 @@ RESTful API sederhana untuk manajemen inventaris barang, dengan autentikasi JWT 
 ## Cara Menjalankan
 
 ```bash
-git clone [ISI_LINK_REPO]
+git clone https://github.com/MFurqonPC/inventory-api.git
 cd inventory-api
 npm install
 ```
