@@ -19,7 +19,7 @@ RESTful API sederhana untuk manajemen inventaris barang, dengan autentikasi JWT 
 ## Cara Menjalankan
 
 ```bash
-git clone https://github.com/MFurqonPC/inventory-api.git
+git clone [ISI_LINK_REPO]
 cd inventory-api
 npm install
 ```
@@ -62,24 +62,24 @@ Endpoint dengan tanda ✅ butuh header `Authorization: Bearer <token>`, token di
 
 Alurnya: **Router → Middleware → Controller → Service → Repository**.
 
-**Router** nangkep request dan cocokin path-nya. **Middleware** ngecek token JWT (`authenticate`) dan validasi input (`validate`) — kalau ada yang gagal, langsung ditolak di sini. **Controller** cuma nerima request dan balikin response, nggak megang logika bisnis. **Service** tempat logika bisnisnya (misal validasi stok nggak boleh minus). **Repository** satu-satunya bagian yang ngomong ke database lewat Sequelize.
+**Router** menerima request dan mencocokkan path-nya. **Middleware** memeriksa token JWT (`authenticate`) dan memvalidasi input (`validate`) — jika salah satu gagal, request langsung ditolak di tahap ini. **Controller** hanya menerima request dan mengembalikan response, tanpa menangani logika bisnis. **Service** adalah tempat logika bisnis berada (misalnya validasi stok tidak boleh negatif). **Repository** adalah satu-satunya bagian yang berkomunikasi langsung dengan database melalui Sequelize.
 
-Saya pisahin gini biar tiap lapisan punya satu tanggung jawab aja. Kalau nanti mau ganti database atau ORM, cukup ubah repository-nya, bagian lain nggak perlu disentuh.
+Saya memisahkan lapisan-lapisan ini agar masing-masing hanya memiliki satu tanggung jawab. Jika suatu saat database atau ORM diganti, cukup ubah repository-nya saja, sementara bagian lain tidak perlu disentuh.
 
 ### 2. Keamanan & Token
 
-Saya pilih **HttpOnly Cookie** (di project ini masih pakai Bearer token biasa biar gampang dites di Postman).
+Saya memilih **HttpOnly Cookie** (pada project ini masih menggunakan Bearer token biasa agar lebih mudah diuji melalui Postman).
 
-Alasannya: token di **Local Storage** bisa dibaca JavaScript, jadi rawan dicuri kalau ada celah **XSS**. Token di **HttpOnly Cookie** nggak bisa diakses JavaScript sama sekali, jadi lebih aman dari XSS. Risikonya emang geser ke **CSRF**, tapi itu bisa dimitigasi dengan `SameSite=Strict` atau CSRF token. Buat saya, risiko XSS lebih berbahaya, jadi HttpOnly Cookie tetap pilihan yang lebih aman.
+Alasannya: token yang disimpan di **Local Storage** dapat dibaca oleh JavaScript, sehingga rentan dicuri jika terjadi celah **XSS**. Token di **HttpOnly Cookie** tidak dapat diakses oleh JavaScript sama sekali, sehingga lebih aman dari XSS. Risikonya bergeser ke **CSRF**, namun ini dapat dimitigasi dengan `SameSite=Strict` atau CSRF token terpisah. Menurut saya, risiko XSS lebih berbahaya, sehingga HttpOnly Cookie tetap menjadi pilihan yang lebih aman.
 
 ### 3. Penanganan Konkurensi
 
-Kalau stok dibaca dulu di kode baru dihitung dan disimpan, ada celah waktu di mana 2 request bisa sama-sama baca stok = 1 dan sama-sama berhasil ngurangin, padahal harusnya cuma satu yang boleh.
+Jika stok dibaca terlebih dahulu di kode, baru dihitung dan disimpan, terdapat celah waktu antara proses baca dan tulis. Dua request dapat membaca stok yang sama (misalnya 1) hampir bersamaan dan sama-sama berhasil mengurangi stok, padahal seharusnya hanya satu yang boleh berhasil.
 
-Solusinya, saya pakai satu query UPDATE atomik langsung di database:
+Solusi yang saya gunakan adalah satu query UPDATE atomik langsung di database:
 
 ```sql
 UPDATE items SET stock = stock - :amount WHERE id = :id AND stock >= :amount
 ```
 
-Database yang ngunci baris itu selama update jalan, jadi request kedua baru diproses setelah yang pertama selesai. Kalau stoknya udah nggak cukup (`stock >= amount` salah), nggak ada baris yang ke-update (`affectedRows = 0`), dan saya balikin `409 Conflict`. Stok jadi nggak mungkin minus. Sudah saya tes di endpoint `PATCH /items/:id/decrease-stock` dan hasilnya sesuai.
+Database akan mengunci baris tersebut selama query berjalan, sehingga request kedua baru diproses setelah request pertama selesai. Jika stok sudah tidak mencukupi (`stock >= amount` bernilai salah), tidak ada baris yang ter-update (`affectedRows = 0`), dan saya mengembalikan response `409 Conflict`. Dengan cara ini stok tidak akan pernah menjadi negatif. Saya sudah menguji ini pada endpoint `PATCH /items/:id/decrease-stock` dan hasilnya sesuai ekspektasi.
